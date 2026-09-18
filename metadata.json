@@ -1,0 +1,6 @@
+{
+  "name": "AI Study Companion",
+  "description": "Adaptive Learning Intelligence with Project Isolation, Grounded AI Tutoring, and Measurable Mastery.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
