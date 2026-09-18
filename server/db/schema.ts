@@ -50,6 +50,10 @@ export const chunks = sqliteTable('chunks', {
   content: text('content').notNull(),
   tokenCount: integer('token_count').notNull(),
   securityFlags: text('security_flags', { mode: 'json' }).notNull(),
+  mediaAssetId: text('media_asset_id'),
+  mediaType: text('media_type').default('text'),
+  boundingBox: text('bounding_box', { mode: 'json' }),
+  timeRange: text('time_range', { mode: 'json' }),
 });
 
 export const concepts = sqliteTable('concepts', {
@@ -238,3 +242,25 @@ export const learnerModels = sqliteTable('learner_models', {
   recommendations: text('recommendations', { mode: 'json' }).notNull(),
   updatedAt: text('updated_at').notNull(),
 });
+
+export const mediaAssets = sqliteTable('media_assets', {
+  id: text('id').primaryKey(),
+  ownerUserId: text('owner_user_id').notNull(),
+  spaceId: text('space_id').notNull(),
+  projectId: text('project_id').notNull(),
+  filename: text('filename').notNull(),
+  mimeType: text('mime_type').notNull(),
+  fileSize: integer('file_size').notNull(),
+  storagePath: text('storage_path').notNull(),
+  checksum: text('checksum').notNull(),
+  width: integer('width'),
+  height: integer('height'),
+  durationSeconds: real('duration_seconds'),
+  mediaType: text('media_type').notNull(), // 'image' | 'diagram' | 'audio'
+  processingStatus: text('processing_status').notNull().default('UPLOADED'),
+  processingError: text('processing_error'),
+  metadata: text('metadata'),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+

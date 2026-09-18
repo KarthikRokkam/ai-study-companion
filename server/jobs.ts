@@ -5,6 +5,8 @@ import { sanitizeUntrustedDocument, chunkDocument } from './grounding.js';
 import { globalVectorStore } from './vector-store.js';
 import { defaultEmbeddingProvider } from './embeddings.js';
 import { ConceptGraphEngine } from './concepts.js';
+import { MediaIntelligenceEngine } from './media-ai.js';
+import { AudioIntelligenceEngine } from './audio-ai.js';
 
 export class BackgroundJobManager {
   private static idempotencyRegistry: Map<string, string> = new Map(); // idempotencyKey -> jobId
@@ -70,7 +72,25 @@ export class BackgroundJobManager {
     db.backgroundJobs.set(jobId, job);
 
     try {
-      if (job.type === 'document_processing' || job.type === 'knowledge_indexing') {
+      if (job.type === 'media_processing') {
+        const assetId = payload?.assetId;
+        job.progress = 20;
+        job.updatedAt = new Date().toISOString();
+        db.backgroundJobs.set(jobId, job);
+
+        const asset = db.mediaAssets.get(assetId);
+        if (asset && asset.mediaType === 'audio') {
+          await AudioIntelligenceEngine.processAudioPipeline(assetId);
+        } else {
+          await MediaIntelligenceEngine.processMediaPipeline(assetId);
+        }
+
+        job.status = 'completed';
+        job.progress = 100;
+        job.resultSummary = `Successfully processed and indexed media asset ${assetId}.`;
+        job.updatedAt = new Date().toISOString();
+        db.backgroundJobs.set(jobId, job);
+      } else if (job.type === 'document_processing' || job.type === 'knowledge_indexing') {
         const docId = payload?.docId;
         const doc = db.documents.get(docId);
         if (!doc) {

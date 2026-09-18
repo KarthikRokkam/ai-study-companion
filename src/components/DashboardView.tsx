@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Target, Clock, ShieldCheck, AlertCircle, Sparkles, ArrowRight, PlayCircle, BookOpen, Layers } from 'lucide-react';
+import { Target, Clock, ShieldCheck, AlertCircle, Sparkles, ArrowRight, PlayCircle, BookOpen, Layers, Image as ImageIcon, Volume2 } from 'lucide-react';
 import { DailyStudyPlan, LearnerAnalyticsDashboardData } from '../types.js';
 
 interface DashboardViewProps {
@@ -12,6 +12,8 @@ interface DashboardViewProps {
   onNavigateToExplorer: () => void;
   onNavigateToMastery: () => void;
   onNavigateToSocratic: (topic?: string) => void;
+  onNavigateToMaterials?: () => void;
+  onNavigateToTutorWithMedia?: (mediaId?: string, topic?: string) => void;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
@@ -23,7 +25,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onNavigateToExam,
   onNavigateToExplorer,
   onNavigateToMastery,
-  onNavigateToSocratic
+  onNavigateToSocratic,
+  onNavigateToMaterials,
+  onNavigateToTutorWithMedia,
 }) => {
   const [dashboardData, setDashboardData] = useState<LearnerAnalyticsDashboardData | null>(null);
   const [dailyPlan, setDailyPlan] = useState<DailyStudyPlan | null>(null);
@@ -80,14 +84,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
           <div className="flex gap-2">
             <button
-              onClick={() => onNavigateToQuiz(nextAction?.conceptName)}
-              className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-semibold transition-colors flex items-center gap-2"
+              onClick={() => {
+                if (nextAction?.mediaAssetId && onNavigateToTutorWithMedia) {
+                  onNavigateToTutorWithMedia(nextAction.mediaAssetId, nextAction.conceptName);
+                } else if (nextAction?.action === 'REVIEW_DIAGRAM' || nextAction?.action === 'EXPLAIN_CONCEPT_VISUALLY') {
+                  onNavigateToTutor(nextAction?.conceptName);
+                } else {
+                  onNavigateToQuiz(nextAction?.conceptName);
+                }
+              }}
+              className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-semibold transition-colors flex items-center gap-2 cursor-pointer"
             >
-              Start Action <ArrowRight className="w-4 h-4" />
+              {nextAction?.action === 'REVIEW_DIAGRAM' ? 'Inspect Diagram' : nextAction?.action === 'EXPLAIN_CONCEPT_VISUALLY' ? 'Visual Explanation' : 'Start Action'} <ArrowRight className="w-4 h-4" />
             </button>
             <button
               onClick={onNavigateToCoach}
-              className="px-4 py-2 bg-white hover:bg-stone-50 border border-stone-200 text-stone-800 rounded-lg text-sm font-semibold transition-colors flex items-center gap-2"
+              className="px-4 py-2 bg-white hover:bg-stone-50 border border-stone-200 text-stone-800 rounded-lg text-sm font-semibold transition-colors flex items-center gap-2 cursor-pointer"
             >
               Ask Coach
             </button>
@@ -115,6 +127,67 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               {(!dailyPlan || dailyPlan.items.length === 0) && (
                 <div className="text-sm text-stone-500">No active plan today. Start exploring to generate one!</div>
               )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Multimodal Knowledge Grounding (Phase 6) */}
+      <div className="p-5 bg-white rounded-2xl border border-stone-200 shadow-sm">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <div className="p-2 bg-amber-100 text-amber-800 rounded-lg">
+              <ImageIcon className="w-4 h-4" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-stone-900">Multimodal Adaptive Intelligence</h4>
+              <p className="text-xs text-stone-500">Grounded visual diagrams, OCR architectures & audio lecture comprehension</p>
+            </div>
+          </div>
+          {onNavigateToMaterials && (
+            <button
+              onClick={onNavigateToMaterials}
+              className="text-xs font-semibold text-amber-800 hover:text-amber-950 flex items-center gap-1 cursor-pointer"
+            >
+              Manage Media Assets <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="p-3.5 bg-stone-50 rounded-xl border border-stone-200/80 flex items-center gap-3">
+            <div className="p-2 bg-sky-100 text-sky-700 rounded-lg shrink-0">
+              <ImageIcon className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="text-xs text-stone-500 font-medium">Visual Concepts</div>
+              <div className="text-lg font-black text-stone-900">
+                {dashboardData?.multimodalActivity?.visualConceptsCount ?? 0}
+              </div>
+            </div>
+          </div>
+
+          <div className="p-3.5 bg-stone-50 rounded-xl border border-stone-200/80 flex items-center gap-3">
+            <div className="p-2 bg-amber-100 text-amber-700 rounded-lg shrink-0">
+              <Volume2 className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="text-xs text-stone-500 font-medium">Audio Concepts</div>
+              <div className="text-lg font-black text-stone-900">
+                {dashboardData?.multimodalActivity?.audioConceptsCount ?? 0}
+              </div>
+            </div>
+          </div>
+
+          <div className="p-3.5 bg-stone-50 rounded-xl border border-stone-200/80 flex items-center gap-3">
+            <div className="p-2 bg-emerald-100 text-emerald-700 rounded-lg shrink-0">
+              <Sparkles className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="text-xs text-stone-500 font-medium">Diagram Interactions</div>
+              <div className="text-lg font-black text-stone-900">
+                {dashboardData?.multimodalActivity?.diagramsPracticedCount ?? 0}
+              </div>
             </div>
           </div>
         </div>

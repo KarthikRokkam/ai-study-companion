@@ -524,29 +524,115 @@ export class LearnerIntelligenceEngine {
 
     const now = new Date().toISOString();
 
-    // 1. Priority 1: High Recurrence Mistakes (occurrenceCount >= 2)
+    // Multimodal asset discovery for adaptive visual/audio interventions
+    const projectMedia = Array.from(db.mediaAssets.values()).filter(
+      (m) => m.projectId === projectId && m.processingStatus === 'READY'
+    );
+    const visualAssets = projectMedia.filter((m) => m.mediaType === 'image' || m.mediaType === 'diagram');
+    const audioAssets = projectMedia.filter((m) => m.mediaType === 'audio');
+
+    // 1. Priority 1: High Recurrence Mistakes (occurrenceCount >= 1 with specialized remediation)
     const activeMistakes = Array.from(db.mistakeRecords.values())
       .filter((m) => m.learnerId === learnerId && m.projectId === projectId && !m.resolved)
       .sort((a, b) => b.occurrenceCount - a.occurrenceCount);
 
-    if (activeMistakes.length > 0 && activeMistakes[0].occurrenceCount >= 2) {
+    if (activeMistakes.length > 0) {
       const mistake = activeMistakes[0];
       const state = this.getOrCreateConceptState(learnerId, projectId, mistake.conceptId);
-      const priority = Math.min(0.60 + 0.10 * mistake.occurrenceCount, 0.95);
 
-      return {
-        action: 'REVIEW_MISTAKE',
-        conceptId: mistake.conceptId,
-        conceptName: state.conceptName,
-        priority: Number(priority.toFixed(2)),
-        reason: `Repeated mistake (${mistake.occurrenceCount}x) identified under ${state.conceptName}. Review the specific invariant failure with the AI Tutor.`,
-        evidence: [
-          `Mistake Type: ${mistake.mistakeType}`,
-          `Last Answer: "${mistake.learnerAnswer}"`,
-          `Occurrences: ${mistake.occurrenceCount}`,
-        ],
-        createdAt: now,
-      };
+      // Phase 6 Deterministic Mistake Remediation Rule 1: MISCONCEPTION -> Visual explanation / Diagram
+      if (mistake.mistakeType === 'MISCONCEPTION') {
+        const diagram = visualAssets.find((v) => v.metadata?.toLowerCase().includes(state.conceptName.toLowerCase())) || visualAssets[0];
+        if (diagram) {
+          return {
+            action: 'REVIEW_DIAGRAM',
+            conceptId: mistake.conceptId,
+            conceptName: state.conceptName,
+            priority: 0.96,
+            reason: `Misconception identified under "${state.conceptName}". Visual inspection of diagram "${diagram.filename}" will deconstruct the mental trap.`,
+            evidence: [
+              `Mistake Type: MISCONCEPTION`,
+              `Target Diagram: ${diagram.filename}`,
+              `Occurrences: ${mistake.occurrenceCount}`,
+            ],
+            createdAt: now,
+            mediaAssetId: diagram.id,
+            mediaType: diagram.mediaType as any,
+          };
+        } else {
+          return {
+            action: 'EXPLAIN_CONCEPT_VISUALLY',
+            conceptId: mistake.conceptId,
+            conceptName: state.conceptName,
+            priority: 0.94,
+            reason: `Misconception identified under "${state.conceptName}". A visual structural explanation is recommended before next quiz.`,
+            evidence: [
+              `Mistake Type: MISCONCEPTION`,
+              `Last Answer: "${mistake.learnerAnswer}"`,
+            ],
+            createdAt: now,
+          };
+        }
+      }
+
+      // Phase 6 Deterministic Mistake Remediation Rule 2: APPLICATION_FAILURE -> Worked diagram -> Application question
+      if (mistake.mistakeType === 'APPLICATION_FAILURE') {
+        const visual = visualAssets[0];
+        if (visual) {
+          return {
+            action: 'PRACTICE_WITH_DIAGRAM',
+            conceptId: mistake.conceptId,
+            conceptName: state.conceptName,
+            priority: 0.92,
+            reason: `Application failure under "${state.conceptName}". Practice applying the rule with the annotated diagram "${visual.filename}".`,
+            evidence: [
+              `Mistake Type: APPLICATION_FAILURE`,
+              `Visual Reference: ${visual.filename}`,
+            ],
+            createdAt: now,
+            mediaAssetId: visual.id,
+            mediaType: visual.mediaType as any,
+          };
+        }
+      }
+
+      // Phase 6 Deterministic Mistake Remediation Rule 3: PREREQUISITE_GAP -> Prerequisite explanation -> Foundational quiz
+      if (mistake.mistakeType === 'PREREQUISITE_GAP') {
+        const prereqInfo = this.getPrerequisiteExplanation(learnerId, projectId, mistake.conceptId);
+        if (prereqInfo) {
+          return {
+            action: 'STUDY_PREREQUISITE',
+            conceptId: prereqInfo.prereqConceptId,
+            conceptName: prereqInfo.prereqName,
+            priority: 0.95,
+            reason: `Prerequisite gap identified. Review foundational concept "${prereqInfo.prereqName}" before re-attempting "${state.conceptName}".`,
+            evidence: [
+              `Mistake Type: PREREQUISITE_GAP`,
+              `Target Concept: ${state.conceptName}`,
+              `Prerequisite Mastery: ${Math.round(prereqInfo.prereqMastery * 100)}%`,
+            ],
+            createdAt: now,
+          };
+        }
+      }
+
+      // Standard recurrent mistake review
+      if (mistake.occurrenceCount >= 2) {
+        const priority = Math.min(0.60 + 0.10 * mistake.occurrenceCount, 0.95);
+        return {
+          action: 'REVIEW_MISTAKE',
+          conceptId: mistake.conceptId,
+          conceptName: state.conceptName,
+          priority: Number(priority.toFixed(2)),
+          reason: `Repeated mistake (${mistake.occurrenceCount}x) identified under ${state.conceptName}. Review the specific invariant failure with the AI Tutor.`,
+          evidence: [
+            `Mistake Type: ${mistake.mistakeType}`,
+            `Last Answer: "${mistake.learnerAnswer}"`,
+            `Occurrences: ${mistake.occurrenceCount}`,
+          ],
+          createdAt: now,
+        };
+      }
     }
 
     // 2. Priority 2: Prerequisite Weakness Blocking Target Concept
@@ -754,6 +840,32 @@ export class LearnerIntelligenceEngine {
 
     const nextAction = this.getNextBestAction(learnerId, projectId);
 
+    // Phase 6 Multimodal Activity Calculation
+    const projectMedia = Array.from(db.mediaAssets.values()).filter(
+      (m) => m.projectId === projectId && m.processingStatus === 'READY'
+    );
+    const visualAssets = projectMedia.filter((m) => m.mediaType === 'image' || m.mediaType === 'diagram');
+    const audioAssets = projectMedia.filter((m) => m.mediaType === 'audio');
+
+    const projectChunks = Array.from(db.chunks.values()).filter((c) => c.projectId === projectId);
+    const visualConceptsCount = new Set(
+      projectChunks.filter((c) => c.mediaType === 'image' || c.mediaType === 'diagram').map((c) => c.docId)
+    ).size;
+    const audioConceptsCount = new Set(
+      projectChunks.filter((c) => c.mediaType === 'audio_transcript').map((c) => c.docId)
+    ).size;
+    const diagramsPracticedCount = Array.from(db.learningEvents.values()).filter(
+      (e) => e.projectId === projectId && (e.eventType === 'DIAGRAM_INTERACTED' || e.eventType === 'MEDIA_VIEWED')
+    ).length;
+
+    const multimodalActivity = {
+      visualConceptsCount,
+      audioConceptsCount,
+      diagramsPracticedCount,
+      recentVisualAssets: visualAssets.slice(0, 5).map((m) => ({ id: m.id, filename: m.filename, mediaType: m.mediaType })),
+      recentAudioAssets: audioAssets.slice(0, 5).map((m) => ({ id: m.id, filename: m.filename, durationSeconds: m.durationSeconds ?? undefined })),
+    };
+
     return {
       overallMastery,
       overallConfidence,
@@ -765,6 +877,7 @@ export class LearnerIntelligenceEngine {
       activeMistakes,
       recentEvents,
       recommendedActions: [nextAction],
+      multimodalActivity,
     };
   }
 }

@@ -411,6 +411,10 @@ export function retrieveHybridKnowledgeSync(
       snippet: c.chunk.content.slice(0, 180).trim() + (c.chunk.content.length > 180 ? '...' : ''),
       relevanceScore: c.hybridScore,
       sourceLocation: `${c.chunk.docTitle} > ${c.chunk.sectionTitle} (Part ${c.chunk.chunkIndex + 1})`,
+      mediaAssetId: c.chunk.mediaAssetId,
+      mediaType: (c.chunk.mediaType as any) || 'text',
+      boundingBox: c.chunk.boundingBox,
+      timeRange: c.chunk.timeRange,
     }));
 
   const retrievedChunks = bestCandidates

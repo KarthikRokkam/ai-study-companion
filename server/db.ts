@@ -19,6 +19,7 @@ import {
   LearnerConceptState,
   MistakeRecord,
   LearningEvent,
+  MediaAsset,
 } from '../src/types.js';
 
 import { globalVectorStore } from './vector-store.js';
@@ -128,6 +129,7 @@ export class DatabaseStore {
   public dailyStudyPlans = new DbMap<string, any>(schema.dailyStudyPlans, schema.dailyStudyPlans.id);
   public examSessions = new DbMap<string, any>(schema.examSessions, schema.examSessions.id);
   public examResults = new DbMap<string, any>(schema.examResults, schema.examResults.examId);
+  public mediaAssets = new DbMap<string, MediaAsset>(schema.mediaAssets, schema.mediaAssets.id);
 
   public eventDeduplicationKeys = new IdempotencySet();
 

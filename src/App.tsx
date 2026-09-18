@@ -35,6 +35,7 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [activeCitation, setActiveCitation] = useState<Citation | null>(null);
+  const [activeMediaId, setActiveMediaId] = useState<string | null>(null);
   const [isObservabilityOpen, setIsObservabilityOpen] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -215,6 +216,7 @@ export default function App() {
               projectId={selectedProjectId}
               projectName={currentProject?.name || 'Current Project'}
               learnerModel={learnerModel}
+              initialMediaId={activeMediaId || undefined}
               onOpenCitation={(cite) => setActiveCitation(cite)}
               onNavigateToQuiz={() => setActiveTab('quiz')}
             />
@@ -224,6 +226,10 @@ export default function App() {
             <MaterialsView
               projectId={selectedProjectId}
               projectName={currentProject?.name || 'Current Project'}
+              onNavigateToTutorWithMedia={(mediaId) => {
+                setActiveMediaId(mediaId);
+                setActiveTab('tutor');
+              }}
             />
           )}
 
@@ -249,6 +255,11 @@ export default function App() {
               onNavigateToExplorer={() => setActiveTab('explorer')}
               onNavigateToMastery={() => setActiveTab('mastery')}
               onNavigateToSocratic={() => setActiveTab('socratic')}
+              onNavigateToMaterials={() => setActiveTab('materials')}
+              onNavigateToTutorWithMedia={(mediaId, topic) => {
+                if (mediaId) setActiveMediaId(mediaId);
+                setActiveTab('tutor');
+              }}
             />
           )}
           {activeTab === 'mastery' && (
@@ -285,6 +296,7 @@ export default function App() {
       {/* Verified Citation Inspector Modal */}
       <CitationModal
         citation={activeCitation}
+        projectId={selectedProjectId}
         onClose={() => setActiveCitation(null)}
       />
 

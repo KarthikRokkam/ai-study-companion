@@ -15,6 +15,13 @@
       "when": 1789716227954,
       "tag": "0001_melted_piledriver",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1789754297456,
+      "tag": "0002_cute_talon",
+      "breakpoints": true
     }
   ]
 }

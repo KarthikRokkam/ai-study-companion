@@ -1,9 +1,12 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
+import multer from 'multer';
 import { createServer as createViteServer } from 'vite';
 import { db } from './server/db.js';
+import { MediaSecurityService } from './server/media.js';
 import {
   authenticateUser,
   verifySpaceIsolation,
@@ -29,7 +32,13 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  app.use(express.json({ limit: '10mb' }));
+  app.use(express.json({ limit: '50mb' }));
+  app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+  const upload = multer({
+    limits: { fileSize: 25 * 1024 * 1024 },
+    storage: multer.memoryStorage(),
+  });
 
   // Global user authentication middleware
   app.use(authenticateUser as express.RequestHandler);
@@ -204,6 +213,103 @@ async function startServer() {
     res.json({ jobs });
   });
 
+  // 8a. Phase 6: Media Upload (Multipart Form or JSON base64)
+  app.post(
+    '/api/projects/:projectId/media',
+    verifyProjectIsolation as express.RequestHandler,
+    upload.single('file'),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        let buffer: Buffer | null = null;
+        let filename: string = '';
+
+        if (req.file) {
+          buffer = req.file.buffer;
+          filename = req.file.originalname;
+        } else if (req.body.dataBase64 && req.body.filename) {
+          const rawBase64 = String(req.body.dataBase64).replace(/^data:.*?;base64,/, '');
+          buffer = Buffer.from(rawBase64, 'base64');
+          filename = String(req.body.filename);
+        }
+
+        if (!buffer || buffer.length === 0 || !filename) {
+          return res.status(400).json({
+            error: 'VALIDATION_ERROR',
+            message: 'A file attachment (multipart/form-data) or JSON { filename, dataBase64 } is required.',
+          });
+        }
+
+        const storedAsset = await MediaSecurityService.storeMediaAsset({
+          projectId: req.project!.id,
+          spaceId: req.space!.id,
+          ownerUserId: req.user!.id,
+          originalFilename: filename,
+          buffer,
+        });
+
+        // Queue asynchronous background processing job
+        const { job } = BackgroundJobManager.enqueueJob({
+          projectId: req.project!.id,
+          userId: req.user!.id,
+          type: 'media_processing',
+          idempotencyKey: `media_${storedAsset.id}_${storedAsset.checksum}`,
+          payload: { assetId: storedAsset.id },
+        });
+
+        res.status(202).json({
+          mediaAsset: storedAsset,
+          job,
+          message: 'Media asset uploaded and validation passed. Processing queued.',
+        });
+      } catch (err: any) {
+        if (err.message?.startsWith('MAGIC_BYTE_MISMATCH') || err.message?.startsWith('INVALID_MIME_TYPE')) {
+          return res.status(415).json({ error: 'UNSUPPORTED_MEDIA_TYPE', message: err.message });
+        }
+        if (err.message?.startsWith('FILE_TOO_LARGE')) {
+          return res.status(413).json({ error: 'FILE_TOO_LARGE', message: err.message });
+        }
+        res.status(400).json({ error: 'MEDIA_UPLOAD_FAILED', message: err.message || 'Media processing error.' });
+      }
+    }
+  );
+
+  // 8b. Phase 6: List Media Assets for Project
+  app.get('/api/projects/:projectId/media', verifyProjectIsolation as express.RequestHandler, (req: AuthenticatedRequest, res) => {
+    const assets = Array.from(db.mediaAssets.values())
+      .filter((a) => a.projectId === req.project!.id)
+      .map((a) => {
+        const { storagePath, ...safeAsset } = a;
+        return safeAsset;
+      });
+    res.json({ mediaAssets: assets });
+  });
+
+  // 8c. Phase 6: Get Specific Media Asset
+  app.get('/api/projects/:projectId/media/:mediaId', verifyProjectIsolation as express.RequestHandler, (req: AuthenticatedRequest, res) => {
+    const asset = db.mediaAssets.get(req.params.mediaId);
+    if (!asset || asset.projectId !== req.project!.id) {
+      return res.status(404).json({ error: 'NOT_FOUND', message: 'Media asset not found in this project.' });
+    }
+    const { storagePath, ...safeAsset } = asset;
+    res.json({ mediaAsset: safeAsset });
+  });
+
+  // 8d. Phase 6: Serve Safe Media Binary
+  app.get('/api/projects/:projectId/media/:mediaId/file', verifyProjectIsolation as express.RequestHandler, (req: AuthenticatedRequest, res) => {
+    const asset = db.mediaAssets.get(req.params.mediaId);
+    if (!asset || asset.projectId !== req.project!.id) {
+      return res.status(404).json({ error: 'NOT_FOUND', message: 'Media asset not found in this project.' });
+    }
+    if (!fs.existsSync(asset.storagePath)) {
+      return res.status(404).json({ error: 'FILE_MISSING', message: 'Underlying media binary is missing from storage.' });
+    }
+
+    res.setHeader('Content-Type', asset.mimeType);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    fs.createReadStream(asset.storagePath).pipe(res);
+  });
+
   // 9. Learner Model for Project (Phase 1 Baseline)
   app.get('/api/projects/:projectId/learner-model', verifyProjectIsolation as express.RequestHandler, (req: AuthenticatedRequest, res) => {
     const model = LearnerModelEngine.getOrCreate(req.user!.id, req.project!.id, req.space!.id);
@@ -323,7 +429,7 @@ async function startServer() {
   // 10. AI Tutor Chat (Context Isolated, Grounded with Citations)
   app.post('/api/projects/:projectId/tutor/chat', verifyProjectIsolation as express.RequestHandler, async (req: AuthenticatedRequest, res) => {
     try {
-      const { message, conversationHistory } = req.body;
+      const { message, conversationHistory, mediaAssetId } = req.body;
       if (!message || typeof message !== 'string' || message.trim().length === 0) {
         return res.status(400).json({ error: 'VALIDATION_ERROR', message: 'Message text is required.' });
       }
@@ -336,9 +442,21 @@ async function startServer() {
       const tutorResponse = await generateTutorResponse({
         projectId: req.project!.id,
         userQuery: message,
+        mediaAssetId,
         learnerModel,
         conversationHistory,
       });
+
+      if (mediaAssetId) {
+        LearnerIntelligenceEngine.recordLearningEvent({
+          eventId: `evt_${crypto.randomUUID().slice(0, 10)}`,
+          learnerId: req.user!.id,
+          projectId: req.project!.id,
+          timestamp: new Date().toISOString(),
+          eventType: 'MEDIA_VIEWED',
+          payload: { mediaAssetId, userQuery: message },
+        });
+      }
 
       // Store in session log
       const sessionKey = req.project!.id;

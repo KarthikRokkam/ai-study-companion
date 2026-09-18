@@ -57,6 +57,22 @@ export interface KnowledgeChunk {
     sanitized: boolean;
     suspiciousPatternsFound: string[];
   };
+  mediaAssetId?: string;
+  mediaType?: 'text' | 'image' | 'diagram' | 'audio_transcript';
+  boundingBox?: { xmin: number; ymin: number; xmax: number; ymax: number };
+  timeRange?: { startSeconds: number; endSeconds: number };
+}
+
+export interface BoundingBox {
+  xmin: number;
+  ymin: number;
+  xmax: number;
+  ymax: number;
+}
+
+export interface TimeRange {
+  startSeconds: number;
+  endSeconds: number;
 }
 
 export interface Citation {
@@ -68,6 +84,10 @@ export interface Citation {
   relevanceScore: number;
   page?: number;
   sourceLocation?: string;
+  mediaAssetId?: string;
+  mediaType?: 'text' | 'image' | 'diagram' | 'audio' | 'audio_transcript';
+  boundingBox?: BoundingBox;
+  timeRange?: TimeRange;
 }
 
 export type GroundingStatus = 'grounded' | 'insufficient_evidence' | 'partial';
@@ -197,7 +217,50 @@ export interface LearnerModel {
 }
 
 export type JobStatus = 'queued' | 'processing' | 'completed' | 'failed';
-export type JobType = 'document_processing' | 'knowledge_indexing' | 'quiz_generation';
+export type JobType = 'document_processing' | 'knowledge_indexing' | 'quiz_generation' | 'media_processing';
+
+export type MediaProcessingStatus =
+  | 'UPLOADED'
+  | 'VALIDATING'
+  | 'READY_FOR_PROCESSING'
+  | 'PROCESSING'
+  | 'READY'
+  | 'FAILED'
+  | 'uploaded'
+  | 'processing'
+  | 'ready'
+  | 'failed';
+
+export interface MediaAsset {
+  id: string;
+  ownerUserId: string;
+  spaceId: string;
+  projectId: string;
+  filename: string;
+  mimeType: string;
+  fileSize: number;
+  byteSize?: number;
+  storagePath: string;
+  checksum: string;
+  width?: number | null;
+  height?: number | null;
+  durationSeconds?: number | null;
+  mediaType: 'image' | 'diagram' | 'audio';
+  processingStatus: MediaProcessingStatus;
+  processingError?: string | null;
+  metadata?: string | null; // JSON encoded metadata
+  visionMetadata?: {
+    detectedRegions?: Array<{ label: string; boundingBox: BoundingBox; description?: string }>;
+    ocrExtractedText?: string;
+  };
+  audioMetadata?: {
+    durationSeconds?: number;
+    segments?: Array<{ startSeconds: number; endSeconds: number; text: string }>;
+    fullTranscript?: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface BackgroundJob {
   id: string;
@@ -256,7 +319,10 @@ export type LearningEventType =
   | 'MISTAKE_RESOLVED'
   | 'CONCEPT_REVIEWED'
   | 'RECOMMENDATION_CREATED'
-  | 'RECOMMENDATION_COMPLETED';
+  | 'RECOMMENDATION_COMPLETED'
+  | 'MEDIA_VIEWED'
+  | 'DIAGRAM_INTERACTED'
+  | 'AUDIO_PLAYED';
 
 export interface LearningEvent {
   eventId: string;
@@ -314,7 +380,13 @@ export type LearnerActionType =
   | 'ASK_TUTOR'
   | 'REVIEW_MISTAKE'
   | 'STUDY_PREREQUISITE'
-  | 'TAKE_ASSESSMENT';
+  | 'TAKE_ASSESSMENT'
+  | 'REVIEW_DIAGRAM'
+  | 'EXPLAIN_CONCEPT_VISUALLY'
+  | 'LISTEN_EXPLANATION'
+  | 'REVIEW_AUDIO_TRANSCRIPT'
+  | 'ANSWER_VISUAL_QUESTION'
+  | 'PRACTICE_WITH_DIAGRAM';
 
 export interface AdaptiveNextAction {
   action: LearnerActionType;
@@ -324,6 +396,8 @@ export interface AdaptiveNextAction {
   reason: string;
   evidence: string[];
   createdAt: string;
+  mediaAssetId?: string;
+  mediaType?: 'image' | 'diagram' | 'audio';
 }
 
 export interface LearnerAnalyticsDashboardData {
@@ -356,6 +430,13 @@ export interface LearnerAnalyticsDashboardData {
   activeMistakes: MistakeRecord[];
   recentEvents: LearningEvent[];
   recommendedActions: AdaptiveNextAction[];
+  multimodalActivity?: {
+    visualConceptsCount: number;
+    audioConceptsCount: number;
+    diagramsPracticedCount: number;
+    recentVisualAssets: Array<{ id: string; filename: string; mediaType: string }>;
+    recentAudioAssets: Array<{ id: string; filename: string; durationSeconds?: number }>;
+  };
 }
 
 

@@ -11,13 +11,18 @@ import {
   ChevronRight,
   Bot,
   User as UserIcon,
+  Image as ImageIcon,
+  Volume2,
+  Paperclip,
+  X,
 } from 'lucide-react';
-import { TutorMessage, Citation, LearnerModel } from '../types.js';
+import { TutorMessage, Citation, LearnerModel, MediaAsset } from '../types.js';
 
 interface TutorViewProps {
   projectId: string;
   projectName: string;
   learnerModel: LearnerModel | null;
+  initialMediaId?: string;
   onOpenCitation: (citation: Citation) => void;
   onNavigateToQuiz: (topic?: string) => void;
 }
@@ -26,13 +31,39 @@ export const TutorView: React.FC<TutorViewProps> = ({
   projectId,
   projectName,
   learnerModel,
+  initialMediaId,
   onOpenCitation,
   onNavigateToQuiz,
 }) => {
   const [messages, setMessages] = useState<TutorMessage[]>([]);
   const [inputQuery, setInputQuery] = useState('');
   const [loading, setLoading] = useState(false);
+  const [availableMedia, setAvailableMedia] = useState<MediaAsset[]>([]);
+  const [selectedMediaId, setSelectedMediaId] = useState<string | null>(initialMediaId || null);
+  const [isMediaPickerOpen, setIsMediaPickerOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Load available media assets for this project
+  useEffect(() => {
+    const fetchMedia = async () => {
+      try {
+        const res = await fetch(`/api/projects/${projectId}/media`);
+        if (res.ok) {
+          const data = await res.json();
+          setAvailableMedia(data.mediaAssets || []);
+        }
+      } catch (err) {
+        console.error('Failed to load project media assets', err);
+      }
+    };
+    fetchMedia();
+  }, [projectId]);
+
+  useEffect(() => {
+    if (initialMediaId) {
+      setSelectedMediaId(initialMediaId);
+    }
+  }, [initialMediaId]);
 
   // Fetch initial history
   useEffect(() => {
@@ -102,6 +133,7 @@ export const TutorView: React.FC<TutorViewProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: query,
+          mediaAssetId: selectedMediaId || undefined,
           conversationHistory: messages.slice(-4).map((m) => ({
             role: m.role,
             content: m.content,
@@ -242,7 +274,13 @@ export const TutorView: React.FC<TutorViewProps> = ({
                           onClick={() => onOpenCitation(cite)}
                           className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-white hover:bg-stone-100 text-stone-700 border border-stone-200 hover:border-stone-300 transition-colors cursor-pointer shadow-2xs"
                         >
-                          <FileText className="w-3 h-3 text-amber-600" />
+                          {cite.mediaType === 'image' || cite.mediaType === 'diagram' ? (
+                            <ImageIcon className="w-3 h-3 text-sky-600" />
+                          ) : cite.mediaType === 'audio_transcript' || cite.mediaType === 'audio' ? (
+                            <Volume2 className="w-3 h-3 text-amber-600" />
+                          ) : (
+                            <FileText className="w-3 h-3 text-amber-600" />
+                          )}
                           <span className="truncate max-w-[120px]">{cite.section || cite.docTitle}</span>
                           <ExternalLink className="w-2.5 h-2.5 text-stone-400" />
                         </button>
@@ -300,18 +338,92 @@ export const TutorView: React.FC<TutorViewProps> = ({
 
       {/* Input Bar */}
       <div className="p-3.5 border-t border-stone-200 bg-white shrink-0">
+        {selectedMediaId && (
+          <div className="flex items-center justify-between px-3 py-1.5 mb-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-900 animate-in fade-in">
+            <div className="flex items-center gap-2 truncate">
+              {availableMedia.find((m) => m.id === selectedMediaId)?.mediaType === 'audio' ? (
+                <Volume2 className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+              ) : (
+                <ImageIcon className="w-3.5 h-3.5 text-sky-700 shrink-0" />
+              )}
+              <span className="font-semibold text-[11px] shrink-0">Attached Media:</span>
+              <span className="truncate text-[11px] text-stone-700 font-mono">
+                {availableMedia.find((m) => m.id === selectedMediaId)?.filename || selectedMediaId}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSelectedMediaId(null)}
+              className="text-stone-400 hover:text-stone-700 cursor-pointer p-0.5"
+              title="Remove media context"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
         <form
           onSubmit={(e) => {
             e.preventDefault();
             handleSendMessage();
           }}
-          className="flex items-center gap-2"
+          className="flex items-center gap-2 relative"
         >
+          {availableMedia.length > 0 && (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsMediaPickerOpen(!isMediaPickerOpen)}
+                title="Attach project diagram or audio context"
+                className={`p-2.5 rounded-lg border transition-colors cursor-pointer flex items-center justify-center ${
+                  selectedMediaId
+                    ? 'bg-amber-100 border-amber-300 text-amber-900'
+                    : 'bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100'
+                }`}
+              >
+                <Paperclip className="w-3.5 h-3.5" />
+              </button>
+
+              {isMediaPickerOpen && (
+                <div className="absolute bottom-full mb-2 left-0 w-72 bg-white border border-stone-200 rounded-xl shadow-xl p-2 z-30 max-h-56 overflow-y-auto text-xs space-y-1">
+                  <div className="px-2 py-1 text-[10px] font-bold text-stone-400 uppercase tracking-wider">
+                    Select Grounding Media Asset
+                  </div>
+                  {availableMedia.map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedMediaId(m.id);
+                        setIsMediaPickerOpen(false);
+                      }}
+                      className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-stone-100 flex items-center justify-between gap-2 cursor-pointer transition-colors"
+                    >
+                      <div className="flex items-center gap-2 truncate">
+                        {m.mediaType === 'audio' ? (
+                          <Volume2 className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                        ) : (
+                          <ImageIcon className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                        )}
+                        <span className="truncate text-[11px] text-stone-800 font-medium">
+                          {m.filename}
+                        </span>
+                      </div>
+                      <span className="text-[9px] uppercase px-1.5 py-0.5 bg-stone-100 rounded text-stone-500 shrink-0">
+                        {m.mediaType}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           <input
             type="text"
             value={inputQuery}
             onChange={(e) => setInputQuery(e.target.value)}
-            placeholder="Ask a conceptual question about this project's material..."
+            placeholder="Ask a conceptual question about this project's material or diagram..."
             disabled={loading}
             className="flex-1 bg-stone-50 border border-stone-200 focus:border-stone-400 focus:bg-white focus:outline-none px-3.5 py-2.5 rounded-lg text-xs text-stone-900 transition-colors"
           />
